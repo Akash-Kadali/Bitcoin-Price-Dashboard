@@ -17,5 +17,5 @@ matplotlib>=3.5
 seaborn>=0.11
 plotly>=5.0
 
-# --- Optional for Deployment ---
-gunicorn          # (Optional) For production WSGI server if deploying on Render/Heroku
+# --- Production Server ---
+gunicorn
