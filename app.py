@@ -34,7 +34,6 @@ def dashboard():
 
         print("Columns in dataframe:", df.columns.tolist())
 
-        # Ensure all expected columns exist
         required_cols = [
             'MA_7', 'MA_30', 'EMA_12', 'EMA_26',
             'MACD', 'Signal', 'Returns', 'Cumulative_Return',
@@ -44,75 +43,20 @@ def dashboard():
             if col not in df.columns:
                 raise ValueError(f"Missing column in df: {col}")
 
-        forecast = run_prophet(df)
+        # Forecast deferred to a separate route to avoid Render timeout
+        forecast_table = "<div style='color:orange;'>Forecast loading separately...</div>"
+        forecast_plot = "<div style='color:orange;'>Loading...</div>"
 
-        try:
-            btc_plot = plot_btc(df)
-        except Exception as e:
-            btc_plot = f"<div style='color:red;'>BTC Plot Error: {e}</div>"
-            print("plot_btc error:", e)
-
-        try:
-            ma_plot = plot_ma(df)
-        except Exception as e:
-            ma_plot = f"<div style='color:red;'>MA Plot Error: {e}</div>"
-            print("plot_ma error:", e)
-
-        try:
-            anomaly_plot = plot_anomalies(df)
-        except Exception as e:
-            anomaly_plot = f"<div style='color:red;'>Anomaly Plot Error: {e}</div>"
-            print("plot_anomalies error:", e)
-
-        try:
-            ma_comparison_plot = plot_ma_comparison(df)
-        except Exception as e:
-            ma_comparison_plot = f"<div style='color:red;'>MA Comparison Plot Error: {e}</div>"
-            print("plot_ma_comparison error:", e)
-
-        try:
-            ema_plot = plot_ema(df)
-        except Exception as e:
-            ema_plot = f"<div style='color:red;'>EMA Plot Error: {e}</div>"
-            print("plot_ema error:", e)
-
-        try:
-            macd_plot = plot_macd(df)
-        except Exception as e:
-            macd_plot = f"<div style='color:red;'>MACD Plot Error: {e}</div>"
-            print("plot_macd error:", e)
-
-        try:
-            returns_plot = plot_returns(df)
-        except Exception as e:
-            returns_plot = f"<div style='color:red;'>Returns Plot Error: {e}</div>"
-            print("plot_returns error:", e)
-
-        try:
-            cumulative_plot = plot_cumulative_returns(df)
-        except Exception as e:
-            cumulative_plot = f"<div style='color:red;'>Cumulative Return Plot Error: {e}</div>"
-            print("plot_cumulative_returns error:", e)
-
-        try:
-            price_change_plot = plot_price_change(df)
-        except Exception as e:
-            price_change_plot = f"<div style='color:red;'>Price Change Plot Error: {e}</div>"
-            print("plot_price_change error:", e)
-
-        try:
-            volatility_plot = plot_volatility(df)
-        except Exception as e:
-            volatility_plot = f"<div style='color:red;'>Volatility Plot Error: {e}</div>"
-            print("plot_volatility error:", e)
-
-        try:
-            forecast_plot = plot_forecast_interactive(forecast)
-        except Exception as e:
-            forecast_plot = f"<div style='color:red;'>Forecast Plot Error: {e}</div>"
-            print("plot_forecast_interactive error:", e)
-
-        forecast_table = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(10).round(2).to_html(index=False)
+        btc_plot = try_plot(plot_btc, df, "BTC")
+        ma_plot = try_plot(plot_ma, df, "MA")
+        anomaly_plot = try_plot(plot_anomalies, df, "Anomaly")
+        ma_comparison_plot = try_plot(plot_ma_comparison, df, "MA Comparison")
+        ema_plot = try_plot(plot_ema, df, "EMA")
+        macd_plot = try_plot(plot_macd, df, "MACD")
+        returns_plot = try_plot(plot_returns, df, "Returns")
+        cumulative_plot = try_plot(plot_cumulative_returns, df, "Cumulative Returns")
+        price_change_plot = try_plot(plot_price_change, df, "Price Change")
+        volatility_plot = try_plot(plot_volatility, df, "Volatility")
 
         return render_template("index.html",
                                btc_plot=btc_plot,
@@ -131,6 +75,26 @@ def dashboard():
         print("Dashboard error:", e)
         return render_template("index.html", btc_plot=None, error=str(e))
 
+
+@app.route('/api/forecast')
+def api_forecast():
+    try:
+        df = load_all_btc_data()
+        df = compute_moving_avg(df)
+        forecast = run_prophet(df)
+
+        forecast_plot = plot_forecast_interactive(forecast)
+        forecast_table = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(10).round(2).to_html(index=False)
+
+        return jsonify({
+            "forecast_plot": forecast_plot,
+            "forecast_table": forecast_table
+        })
+    except Exception as e:
+        print("Forecast API error:", e)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/refresh')
 def refresh():
     try:
@@ -138,3 +102,12 @@ def refresh():
         return jsonify({"status": "updated"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# Reusable helper to catch plot errors
+def try_plot(plot_func, df, label):
+    try:
+        return plot_func(df)
+    except Exception as e:
+        print(f"{label} plot error:", e)
+        return f"<div style='color:red;'>{label} Plot Error: {e}</div>"
